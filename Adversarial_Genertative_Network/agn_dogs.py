@@ -97,7 +97,7 @@ class adversarial_generative_network:
         image = self.combine_images(generated_images)
         image = image*127.5+127.5
         print(image.shape)
-        Image.fromarray(image.astype(np.uint8)).save("h:/Desktop/generated_image.png")
+        Image.fromarray(image.astype(np.uint8)).save("h:\\Desktop\\GitHub\\practice_deep_learning\\deep_learning\\Adversarial_Genertative\\Results\\generated_image.png")
     
     def generate_single_image(self):
         generator=self.g
