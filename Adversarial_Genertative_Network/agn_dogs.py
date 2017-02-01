@@ -21,7 +21,7 @@ from PIL import Image
 import argparse
 import math
 from cleandata import Cleaner
-
+BATCH_SIZE=140
 
 class adversarial_generative_network:
     
@@ -29,7 +29,11 @@ class adversarial_generative_network:
         self.g=self.make_generator_model()
         self.d=self.make_discriminator_model()
         self.agn=self.make_agn(self.g,self.d)
-        self.X=Cleaner('h:\\Desktop\\GitHub\\practice_deep_learning\\deep_learning\\Adversarial_Genertative_Network\\Data\\train').build_X()
+        self.X=Cleaner('h:\\Desktop\\GitHub\\practice_deep_learning\\deep_learning\\Adversarial_Genertative_Network\\Data\\',BATCH_SIZE).clean_photos()
+        self.noise = np.zeros((1, 1000))
+        for i in range(1):
+            self.noise[i, :] = np.random.uniform(-1, 1, 1000)
+        print('Setup Complete')
         return None
     
     def get_data(self):
@@ -37,17 +41,23 @@ class adversarial_generative_network:
     
     def make_generator_model(self):
         model = Sequential()
-        model.add(Dense(input_dim=100, output_dim=1024))
+        model.add(Dense(input_dim=1000, output_dim=12544))
         model.add(Activation('tanh'))
-        model.add(Dense(56*7*7))
+        model.add(Dense(448*7*7))
         model.add(BatchNormalization())
         model.add(Activation('tanh'))
-        model.add(Reshape((56, 7, 7), input_shape=(56*7*7,)))
+        model.add(Reshape((7,7,448), input_shape=(448*7*7,)))
         model.add(UpSampling2D(size=(2, 2)))
-        model.add(Convolution2D(56, 5, 5, border_mode='same'))
+        model.add(Convolution2D(7,6, 6, border_mode='same'))
         model.add(Activation('tanh'))
-        model.add(UpSampling2D(size=(1, 8)))
-        model.add(Convolution2D(1, 5, 5, border_mode='same'))
+        model.add(UpSampling2D(size=(2, 2)))
+        model.add(Convolution2D(6, 2, 2, border_mode='same'))
+        model.add(Activation('tanh'))
+        model.add(UpSampling2D(size=(2, 2)))
+        model.add(Convolution2D(3, 6, 6, border_mode='same'))
+        model.add(Activation('tanh'))
+        model.add(UpSampling2D(size=(2, 2)))
+        model.add(Convolution2D(3, 2, 2, border_mode='same'))
         model.add(Activation('tanh'))
         return model
     
@@ -55,10 +65,14 @@ class adversarial_generative_network:
     def make_discriminator_model(self):
         model = Sequential()
         model.add(Convolution2D(
-                            1, 1, 112,
+                            2, 2, 112,
                             border_mode='same',
-                            input_shape=(3, 112, 112)))
+                            input_shape=(112, 112, 3)))
         model.add(Activation('tanh'))
+        model.add(MaxPooling2D(pool_size=(2, 2)))
+        model.add(Convolution2D(128, 5, 5))
+        model.add(Activation('tanh'))
+        model.add(MaxPooling2D(pool_size=(2, 2)))
         model.add(Flatten())
         model.add(Dense(1024))
         model.add(Activation('tanh'))
@@ -90,9 +104,9 @@ class adversarial_generative_network:
     
     def inspect_generated_images(self,BATCH_SIZE):
         generator=self.g
-        noise = np.zeros((BATCH_SIZE, 100))
+        noise = np.zeros((BATCH_SIZE, 1000))
         for i in range(BATCH_SIZE):
-            noise[i, :] = np.random.uniform(-1, 1, 100)
+            noise[i, :] = np.random.uniform(-1, 1, 1000)
         generated_images = generator.predict(noise, verbose=1)
         print(generated_images.shape)
         image = self.combine_images(generated_images)
@@ -102,45 +116,45 @@ class adversarial_generative_network:
     
     def generate_single_image(self):
         generator=self.g
-        noise = np.zeros((1, 100))
-        for i in range(1):
-            noise[i, :] = np.random.uniform(-1, 1, 100)
-        generated_images = generator.predict(noise, verbose=1)
+        generated_images = generator.predict(self.noise, verbose=1)
         print(generated_images.shape)
-        image = self.combine_images(generated_images)
-        image = image*127.5+127.5
-        return Image.fromarray(image.astype(np.uint8))
+        #image = self.combine_images(generated_images)
+        image = generated_images*127.5+127.5
+        print(image.shape)
+        return Image.fromarray(image[0,:,:,:].astype(np.uint8))
         
-    def train(self,BATCH_SIZE):
+    def train(self,BATCH_SIZE,epochs=100):
+        
         d_optim=SGD(lr=0.0005,momentum=0.9,nesterov=True)
         g_optim=SGD(lr=0.0005,momentum=0.9,nesterov=True)
         self.g.compile(loss='binary_crossentropy',optimizer="SGD")
         self.agn.compile(loss='binary_crossentropy',optimizer=g_optim)
         self.d.trainable=True
         self.d.compile(loss='binary_crossentropy',optimizer=d_optim)
-        noise=np.zeros((BATCH_SIZE,100))
-        for epoch in range(100):
-            for index in range(int(len(self.X)/BATCH_SIZE)):
+        noise=np.zeros((BATCH_SIZE,1000))
+        noise2=np.zeros((BATCH_SIZE*2,1000))
+        for epoch in range(epochs):
+            num=0
+            for j in range(7):
+                images=self.X.next()
+                num+=140
                 for i in range(BATCH_SIZE):
-                    noise[i,:]=np.random.uniform(-1,1,100)
-                image_batch=self.X[index*BATCH_SIZE:(index+1)*BATCH_SIZE]
+                    noise[i,:]=np.random.uniform(-1,1,1000)
+                image_batch=images
                 generated_images=self.g.predict(noise,verbose=0)
-                print(image_batch.shape)
-                print(generated_images.shape)
-                #image_batch=np.reshape(image_batch,(10,112,112))
-                generated_images=np.reshape(generated_images,(10,1,112,112))
                 X=np.concatenate((image_batch,generated_images))
-                #X=np.reshape(X,(20,1,112,112))
                 y=[1]*BATCH_SIZE+[0]*BATCH_SIZE
                 d_loss=self.d.train_on_batch(X,y)
-                for i in range(BATCH_SIZE):
-                    noise[i, :] = np.random.uniform(-1, 1, 100)
+                for i in range(BATCH_SIZE*2):
+                    noise2[i, :] = np.random.uniform(-1, 1, 1000)
                 self.d.trainable=False
-                g_loss=self.agn.train_on_batch(noise,[1]*BATCH_SIZE)
+                g_loss=self.agn.train_on_batch(noise2,[1]*BATCH_SIZE*2)
+                print('Number of images trained: {0}, EPOCH {1} of {4}, d_loss:  {2},   g_loss:  {3}'.format(num,epoch+1,d_loss,g_loss,epochs))
                 self.d.trainable=True
+            self.generate_single_image().save('h:\\desktop\\github\\practice_deep_learning\\deep_learning\\Adversarial_Genertative_Network\\Results\\epoch{0}.png'.format(epoch+1))
                 
         
 if __name__=='__main__':
     model=adversarial_generative_network()
-    model.train(10)
+    model.train(140,1000)
     model.generate_single_image().show()
