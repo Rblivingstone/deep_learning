@@ -8,20 +8,21 @@ This fun little project is about continuing education.
 """
 
 from keras.models import Sequential
-from keras.layers import Dense
+from keras.layers import Dense,Dropout
 from keras.layers import Reshape
 from keras.layers.core import Activation
 from keras.layers.normalization import BatchNormalization
 from keras.layers.convolutional import UpSampling2D
 from keras.layers.convolutional import Convolution2D, MaxPooling2D
 from keras.layers.core import Flatten
-from keras.optimizers import SGD
+from keras.optimizers import SGD,Adam
+from keras.layers.advanced_activations import LeakyReLU
 import numpy as np
 from PIL import Image
 import argparse
 import math
 from cleandata import Cleaner
-BATCH_SIZE=140
+BATCH_SIZE=1000
 
 class adversarial_generative_network:
     
@@ -41,40 +42,51 @@ class adversarial_generative_network:
     
     def make_generator_model(self):
         model = Sequential()
-        model.add(Dense(input_dim=1000, output_dim=12544))
-        model.add(Activation('tanh'))
-        model.add(Dense(448*7*7))
+        model.add(Dense(input_dim=1000, output_dim=12544,init='glorot_normal'))
+        model.add(Activation('relu'))
+        model.add(Dense(1024*4*4,init='glorot_normal'))
         model.add(BatchNormalization())
-        model.add(Activation('tanh'))
-        model.add(Reshape((7,7,448), input_shape=(448*7*7,)))
+        model.add(Activation('relu'))
+        model.add(Reshape((4,4,1024), input_shape=(1024*4*4,)))
         model.add(UpSampling2D(size=(2, 2)))
-        model.add(Convolution2D(7,6, 6, border_mode='same'))
-        model.add(Activation('tanh'))
+        model.add(Convolution2D(512,5, 5, border_mode='same',init='glorot_normal'))
+        model.add(BatchNormalization())
+        model.add(Activation('relu'))
         model.add(UpSampling2D(size=(2, 2)))
-        model.add(Convolution2D(6, 2, 2, border_mode='same'))
-        model.add(Activation('tanh'))
+        model.add(Convolution2D(256, 5, 5, border_mode='same',init='glorot_normal'))
+        model.add(BatchNormalization())
+        model.add(Activation('relu'))
         model.add(UpSampling2D(size=(2, 2)))
-        model.add(Convolution2D(3, 6, 6, border_mode='same'))
-        model.add(Activation('tanh'))
+        model.add(Convolution2D(128, 5, 5, border_mode='same',init='glorot_normal'))
+        model.add(BatchNormalization())
         model.add(UpSampling2D(size=(2, 2)))
-        model.add(Convolution2D(3, 2, 2, border_mode='same'))
-        model.add(Activation('tanh'))
+        model.add(Convolution2D(3, 5, 5, border_mode='same',init='glorot_normal'))
+        #model.add(Activation('tanh'))
         return model
     
     
     def make_discriminator_model(self):
         model = Sequential()
         model.add(Convolution2D(
-                            2, 2, 112,
+                            3, 5, 5,
                             border_mode='same',
-                            input_shape=(112, 112, 3)))
+                            input_shape=(64, 64, 3)))
         model.add(Activation('tanh'))
+        model.add(Convolution2D(8, 5, 5,subsample=(2,2),border_mode='same',activation='relu'))
+        model.add(LeakyReLU(0.2))
+        model.add(Convolution2D(16, 5, 5, subsample=(2, 2), border_mode = 'same', activation='relu'))
+        model.add(LeakyReLU(0.2))
+        model.add(Convolution2D(32, 5, 5, subsample=(2, 2), border_mode = 'same', activation='relu'))
+        model.add(LeakyReLU(0.2))
+        model.add(Convolution2D(64, 5, 5, subsample=(2, 2), border_mode = 'same', activation='relu'))
+        model.add(LeakyReLU(0.2))
+        model.add(Convolution2D(128, 5, 5, subsample=(2, 2), border_mode = 'same', activation='relu'))
+        model.add(LeakyReLU(0.2))
         model.add(MaxPooling2D(pool_size=(2, 2)))
-        model.add(Convolution2D(128, 5, 5))
-        model.add(Activation('tanh'))
-        model.add(MaxPooling2D(pool_size=(2, 2)))
+        
         model.add(Flatten())
         model.add(Dense(1024))
+        model.add(Dropout(0.25))
         model.add(Activation('tanh'))
         model.add(Dense(1))
         model.add(Activation('sigmoid'))
@@ -112,22 +124,25 @@ class adversarial_generative_network:
         image = self.combine_images(generated_images)
         image = image*127.5+127.5
         print(image.shape)
-        Image.fromarray(image.astype(np.uint8)).save("h:\\Desktop\\GitHub\\practice_deep_learning\\deep_learning\\Adversarial_Genertative\\Results\\generated_image.png")
+        Image.fromarray(image.astype(np.uint8)).save("h:\\Desktop\\GitHub\\practice_deep_learning\\deep_learning\\Adversarial_Genertative_network\\Results\\generated_image.png")
     
     def generate_single_image(self):
         generator=self.g
         generated_images = generator.predict(self.noise, verbose=1)
         print(generated_images.shape)
         #image = self.combine_images(generated_images)
-        image = generated_images*127.5+127.5
+        #image = generated_images*127.5+127.5
+        image = generated_images
         print(image.shape)
         return Image.fromarray(image[0,:,:,:].astype(np.uint8))
         
     def train(self,BATCH_SIZE,epochs=100):
         
-        d_optim=SGD(lr=0.0005,momentum=0.9,nesterov=True)
-        g_optim=SGD(lr=0.0005,momentum=0.9,nesterov=True)
-        self.g.compile(loss='binary_crossentropy',optimizer="SGD")
+        #d_optim=SGD(lr=0.01,momentum=0.99,nesterov=True)
+        #g_optim=SGD(lr=0.01,momentum=0.99,nesterov=True)
+        d_optim=Adam()
+        g_optim=Adam()
+        self.g.compile(loss='binary_crossentropy',optimizer="Adam")
         self.agn.compile(loss='binary_crossentropy',optimizer=g_optim)
         self.d.trainable=True
         self.d.compile(loss='binary_crossentropy',optimizer=d_optim)
@@ -135,12 +150,12 @@ class adversarial_generative_network:
         noise2=np.zeros((BATCH_SIZE*2,1000))
         for epoch in range(epochs):
             num=0
-            for j in range(7):
+            for j in range(25):
                 images=self.X.next()
-                num+=140
+                num+=BATCH_SIZE
                 for i in range(BATCH_SIZE):
                     noise[i,:]=np.random.uniform(-1,1,1000)
-                image_batch=images
+                image_batch=images.astype(np.float32)
                 generated_images=self.g.predict(noise,verbose=0)
                 X=np.concatenate((image_batch,generated_images))
                 y=[1]*BATCH_SIZE+[0]*BATCH_SIZE
@@ -156,5 +171,6 @@ class adversarial_generative_network:
         
 if __name__=='__main__':
     model=adversarial_generative_network()
-    model.train(140,1000)
-    model.generate_single_image().show()
+    model.generate_single_image().save('h:\\desktop\\github\\practice_deep_learning\\deep_learning\\Adversarial_Genertative_Network\\Results\\epoch0.png')
+    model.train(BATCH_SIZE,1000)
+    
